@@ -1,0 +1,68 @@
+---
+trigger:
+- master
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+- stage: BUILD
+  jobs:
+  - job: TestAndPackage
+    steps:
+    - script: |
+        terraform version
+        terraform init
+      displayName: 'Terraform Initialize'
+      workingDirectory: '.'
+
+    - script: |
+        terraform validate 
+      displayName: 'Terraform Linter' 
+      workingDirectory: '.' 
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        artifact: azure_app_service
+
+- stage: DEPLOY
+  dependsOn: BUILD
+  jobs:
+  - job: DeployToAzure
+    variables:
+      AZURE_CLIENT_ID: $(AZ.ClientId)
+      AZURE_SECRET: $(AZ.ClientSecret)
+      MONGODB_USERNAME: $(AZ.MongoUserName)
+      MONGODB_PASSWORD: $(AZ.MongoPassword)
+      MYSQL_USERNAME: $(AZ.MysqlUserName)
+      MYSQL_PASSWORD: $(AZ.MysqlPassword)
+      
+    steps:
+    - task: DownloadPipelineArtifact@2
+      displayName: 'Download Artifact from current run'
+      inputs:
+        buildType: 'current'
+        artifactName: 'azure_app_service'
+        targetPath: '$(Pipeline.Workspace)' 
+
+    - script: |
+        sudo chmod +x -R .terraform/providers/registry.terraform.io/hashicorp/azurerm/2.46.0/linux_amd64/*
+        terraform plan -var client_id=$(AZURE_CLIENT_ID) -var client_secret=$(AZURE_SECRET) -var mongodb_username=$(MONGODB_USERNAME) -var mongodb_password=$(MONGODB_PASSWORD) -var mysql_username=$(MYSQL_USERNAME) -var mysql_password=$(MYSQL_PASSWORD) 
+      displayName: 'Terraform Plan'
+      workingDirectory: '.'
+      enabled: true
+
+    - script: |
+        terraform apply -auto-approve  -var client_id=$(AZURE_CLIENT_ID) -var client_secret=$(AZURE_SECRET) -var mongodb_username=$(MONGODB_USERNAME) -var mongodb_password=$(MONGODB_PASSWORD) -var mysql_username=$(MYSQL_USERNAME) -var mysql_password=$(MYSQL_PASSWORD)
+      displayName: 'Terraform Apply' 
+      workingDirectory: '.'
+      enabled: true
+
+      
+    - script: |
+        terraform destroy -auto-approve -var client_id=$(AZURE_CLIENT_ID) -var client_secret=$(AZURE_SECRET) -var mongodb_username=$(MONGODB_USERNAME) -var mongodb_password=$(MONGODB_PASSWORD) -var mysql_username=$(MYSQL_USERNAME) -var mysql_password=$(MYSQL_PASSWORD)
+      condition: failed()
+      displayName: 'Terraform Destroy' 
+      workingDirectory: '.'
+      enabled: true

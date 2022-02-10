@@ -1,0 +1,5 @@
+subscription_id     = ""
+tenant_id           = ""
+resource_group_name = ""
+location            = "East US"
+deployment_name     = "cloudappmigration"
